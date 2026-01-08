@@ -273,7 +273,7 @@ class JobThaiRowScraper:
         console.print(f"2️⃣   กำลังเข้าหน้าค้นหาและพิมพ์: '[bold]{keyword}[/]' ...", style="info")
         try:
             self.driver.get(search_url)
-            self.random_sleep(3, 5) 
+            self.random_sleep(7, 10) 
             keyword_input = WebDriverWait(self.driver, 20).until(EC.visibility_of_element_located((By.ID, "KeyWord")))
             keyword_input.clear()
             time.sleep(0.5)
