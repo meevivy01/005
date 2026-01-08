@@ -543,7 +543,7 @@ class JobThaiRowScraper:
         printer.print(f"   🔥 เจอ: {highest_degree_text} | มหาลัย: {matched_uni} | วันที่: {days_diff} วันก่อน", style="bold green")
         return data, days_diff, person_data
     
-    def send_single_email(self, subject_prefix, people_list, col_header="เคยทำบริษัท (คู่แข่ง)"):
+    def send_single_email(self, subject_prefix, people_list, col_header="เคยทำงานบริษัท"):
         sender = os.getenv("EMAIL_SENDER")
         password = os.getenv("EMAIL_PASSWORD")
         receiver_list = []
