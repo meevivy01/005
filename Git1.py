@@ -134,13 +134,19 @@ class JobThaiRowScraper:
         # --- 🟢 DRIVER CONFIG FOR GITHUB ACTIONS (SELENIUM STANDARD) ---
         opts = webdriver.ChromeOptions()
         
-        # Headless Config
-        opts.add_argument('--headless=new') # บังคับ Headless บน GitHub
+        # --- 🛠️ DRIVER CONFIG ---
+        opts = webdriver.ChromeOptions()
+        
+        # ❌ ลบบรรทัดนี้ออกครับ: opts.add_argument('--headless=new') 
+        # เพราะเราใช้ xvfb-run แล้ว การใส่ headless ซ้อนจะทำให้ Crash
+        
+        # ✅ ตั้งค่าที่เหลือตามนี้
         opts.add_argument('--window-size=1920,1080')
         opts.add_argument("--no-sandbox")
         opts.add_argument("--disable-dev-shm-usage")
         opts.add_argument("--disable-gpu")
         
+        # ... (Config อื่นๆ เหมือนเดิม) ...
         # Anti-Detection & Popup
         opts.add_argument("--disable-popup-blocking")
         opts.add_argument("--disable-notifications")
@@ -232,87 +238,67 @@ class JobThaiRowScraper:
             try:
                 self.driver.get(login_url)
                 self.wait_for_page_load()
-                
-                # 1. Kill Popups / PDPA
+                time.sleep(3) # รอให้เว็บโหลดนิ่งๆ ก่อน
+
+                # 1. Kill Popups (JS)
                 console.print("   🧹 Clearing Popups...", style="dim")
-                try:
-                    self.driver.execute_script("""
-                        var pdpa = document.querySelector('#pdpa-consent-dialog button');
-                        if(pdpa) pdpa.click();
-                        var modal = document.querySelector('.modal-close-btn');
-                        if(modal) modal.click();
-                    """)
-                    time.sleep(1)
-                except: pass
+                self.driver.execute_script("""
+                    try { document.querySelector('#pdpa-consent-dialog button').click(); } catch(e){}
+                    try { document.querySelector('.modal-close-btn').click(); } catch(e){}
+                """)
 
-                # 2. Force Switch Tab to Employer (JS Injection)
-                console.print("   ⚡ Injecting JS to switch tab...", style="info")
-                try:
-                    self.driver.execute_script("""
-                        document.querySelectorAll('li[data-tab]').forEach(el => el.classList.remove('active'));
-                        var tabEmp = document.querySelector('li[data-tab="employer"]');
-                        if(tabEmp) tabEmp.classList.add('active');
-                        
-                        var formSeeker = document.getElementById('login-form-jobseeker');
-                        if(formSeeker) formSeeker.style.display = 'none';
-                        
-                        var formEmp = document.getElementById('login-form-employer');
-                        if(formEmp) formEmp.style.display = 'block';
-                    """)
-                    time.sleep(1)
-                except Exception as e: console.print(f"⚠️ Tab switch warning: {e}", style="dim")
+                # 2. Force Switch Tab & Input (JS Injection - ท่าไม้ตาย)
+                console.print("   ⚡ Injecting Login Credentials via JS...", style="info")
+                
+                # ใช้ JS ยัดเยียด User/Pass เข้าไปดื้อๆ (วิธีนี้เสถียรที่สุดบน Server)
+                # และบังคับกดปุ่ม Submit ผ่าน JS
+                self.driver.execute_script(f"""
+                    // 1. Switch Tab
+                    document.querySelectorAll('li[data-tab]').forEach(el => el.classList.remove('active'));
+                    var tabEmp = document.querySelector('li[data-tab="employer"]');
+                    if(tabEmp) tabEmp.classList.add('active');
+                    
+                    document.getElementById('login-form-jobseeker').style.display = 'none';
+                    document.getElementById('login-form-employer').style.display = 'block';
 
-                # 3. Fill Username/Password
-                console.print("   📝 Inputting credentials...", style="info")
+                    // 2. Force Value
+                    var u = document.querySelector("#login-form-username, input[name='username']");
+                    var p = document.querySelector("#login-form-password, input[name='password']");
+                    
+                    if(u) {{ u.value = '{MY_USERNAME}'; u.dispatchEvent(new Event('input')); }}
+                    if(p) {{ p.value = '{MY_PASSWORD}'; p.dispatchEvent(new Event('input')); }}
+                """)
                 
-                # รอให้เจอช่อง Username และต้อง interactable
-                user_inp = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "#login-form-username, input[name='username']"))
-                )
-                # ใช้ ActionChains เพื่อความชัวร์
-                ActionChains(self.driver).move_to_element(user_inp).click().perform()
-                user_inp.clear()
-                user_inp.send_keys(MY_USERNAME)
+                time.sleep(1) # รอ JS ทำงาน
                 
-                pass_inp = self.driver.find_element(By.CSS_SELECTOR, "#login-form-password, input[name='password']")
-                pass_inp.clear()
-                pass_inp.send_keys(MY_PASSWORD)
-                
-                # 4. Submit
+                # 3. Submit
                 console.print("   🚀 Submitting...", style="info")
-                pass_inp.send_keys(Keys.ENTER)
-                time.sleep(2)
-                
-                # ถ้ากด Enter ไม่ไป ให้ลอง Click ปุ่ม
+                # หาปุ่มแล้วกด
                 try:
                     btn = self.driver.find_element(By.CSS_SELECTOR, "#btn-login, button[type='submit']")
                     self.driver.execute_script("arguments[0].click();", btn)
-                except: pass
+                except:
+                    # ถ้าหาปุ่มไม่เจอ ให้ Enter ที่ Password
+                    self.driver.find_element(By.CSS_SELECTOR, "input[name='password']").send_keys(Keys.ENTER)
 
-                # 5. Verify Login
+                # 4. Verify
                 console.print("   ⏳ Verifying...", style="dim")
-                try:
-                    WebDriverWait(self.driver, 20).until(
-                        lambda d: "login" not in d.current_url or "findresume" in d.current_url
-                    )
+                time.sleep(5) # รอหน้าเปลี่ยน
+                
+                if "login" not in self.driver.current_url or "findresume" in self.driver.current_url:
                     console.print(f"🎉 Login Success! (Attempt {attempt})", style="bold green")
                     return True
-                except TimeoutException:
-                    # Check Error Message
-                    try:
-                        err = self.driver.find_element(By.CSS_SELECTOR, ".error-message").text
-                        console.print(f"   🛑 Login Error Message: {err}", style="bold red")
-                    except: pass
-                    console.print("   ❌ Timeout: URL didn't change.", style="error")
+                else:
+                    # Capture Screenshot เมื่อ Login ไม่ผ่าน
+                    self.driver.save_screenshot(f"login_fail_attempt_{attempt}.png")
+                    console.print(f"   ❌ URL ไม่เปลี่ยน (Saved Screenshot: login_fail_{attempt}.png)", style="error")
 
             except Exception as e:
                 console.print(f"   ⚠️ Exception: {e}", style="warning")
-                try: self.driver.delete_all_cookies()
-                except: pass
+                self.driver.save_screenshot(f"error_attempt_{attempt}.png")
                 
         console.print("❌ Login Failed after all attempts.", style="bold red")
         return False
-
     def step2_search(self, keyword):
         search_url = "https://www3.jobthai.com/findresume/findresume.php?l=th"
         console.print(f"2️⃣   ค้นหา: '[bold]{keyword}[/]' ...", style="info")
