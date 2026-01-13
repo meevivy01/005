@@ -10,3 +10,4 @@ PyYAML
 openpyxl
 gspread
 oauth2client
+webdriver-manager
