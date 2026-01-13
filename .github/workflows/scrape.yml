@@ -2,13 +2,14 @@ name: JobThai Scraper Uni
 
 # Schedule and manual trigger
 on:
-  workflow_dispatch:       # 1. Manual run button
+  workflow_dispatch:       # Manual run button
   schedule:
-    - cron: '0 17 * * *'   # 2. Auto-run daily at 00:00 Thailand time (UTC 17:00)
+    - cron: '0 17 * * *'   # Auto-run daily at 00:00 Thailand time (UTC 17:00)
 
 jobs:
   scrape_job:
-    runs-on: ubuntu-latest
+    # 🟢 ปรับเป็น 24.04 เพื่อให้รองรับ libasound2t64 ที่คุณเลือกใช้
+    runs-on: ubuntu-24.04 
     
     # Set Timezone to Thailand
     env:
@@ -25,7 +26,7 @@ jobs:
         with:
           python-version: '3.9'
 
-      # 3. Install Google Chrome (Latest stable version)
+      # 3. Install Google Chrome
       - name: Install Google Chrome
         run: |
           wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
@@ -33,44 +34,36 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y google-chrome-stable
 
-      # 4. Install Xvfb and dependencies (แก้ไขชื่อแพ็กเกจสำหรับ Ubuntu 24.04)
+      # 4. Install Xvfb and Dependencies (สำหรับ Ubuntu 24.04)
       - name: Install Xvfb and Dependencies
         run: |
           sudo apt-get update
-          # เปลี่ยน libasound2 เป็น libasound2t64 ตามมาตรฐานใหม่ของ Ubuntu Noble
-          sudo apt-get install -y xvfb libnss3 libasound2t64 libgbm1
+          # libasound2t64 ถูกต้องแล้วสำหรับ Ubuntu 24.04
+          sudo apt-get install -y xvfb libnss3 libasound2t64 libgbm1 libu2f-udev fonts-liberation
 
       # 5. Install Python libraries
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # Ensure all necessary libraries are installed
           pip install pandas undetected-chromedriver python-dotenv pyyaml rich thefuzz python-dateutil gspread oauth2client fake-useragent
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # 6. Create Config & Env Files
-      - name: Create Config & Env Files
+      # 6. Create Config Files (เฉพาะไฟล์ YAML ที่จำเป็น)
+      # ❌ ตัดการสร้าง User.env ออก เพราะเราจะส่งผ่าน Env Vars ในขั้นตอน Run แทน (ปลอดภัยกว่า)
+      - name: Create Config Files
         env:
           DATA_COMP: ${{ secrets.COMPETITORS_DATA }}
           DATA_CLIENT: ${{ secrets.CLIENTS_DATA }}
           DATA_TIER1: ${{ secrets.TIER1_DATA }}
         run: |
-          # Create yaml files
           echo "$DATA_COMP" > compe.yaml
           echo "$DATA_CLIENT" > co.yaml
           echo "$DATA_TIER1" > tier1.yaml
-          
-          # Create User.env
-          touch User.env
-          echo "JOBTHAI_USER=${{ secrets.JOBTHAI_USER }}" >> User.env
-          echo "JOBTHAI_PASS=${{ secrets.JOBTHAI_PASS }}" >> User.env
-          echo "EMAIL_SENDER=${{ secrets.EMAIL_SENDER }}" >> User.env
-          echo "EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }}" >> User.env
-          echo "EMAIL_RECEIVER=${{ secrets.EMAIL_RECEIVER }}" >> User.env
 
       # 7. Run Scraper with Xvfb
       - name: Run Scraper with Xvfb
         env:
+          # ส่งค่าเข้าโปรแกรมโดยตรง (Python จะอ่านผ่าน os.getenv ได้เลย)
           JOBTHAI_USER: ${{ secrets.JOBTHAI_USER }}
           JOBTHAI_PASS: ${{ secrets.JOBTHAI_PASS }}
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
@@ -81,11 +74,12 @@ jobs:
           G_SHEET_KEY: ${{ secrets.G_SHEET_KEY }}
           G_SHEET_NAME: ${{ secrets.G_SHEET_NAME }}
         run: |
+          # 🟢 อย่าลืมเช็คชื่อไฟล์ว่าตรงกับใน Repo (Git1.py)
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python Git1.py
 
       # 8. Upload Results
       - name: Upload Results (CSV & Images)
-        if: always() # Run even if the previous step fails
+        if: always() 
         uses: actions/upload-artifact@v4
         with:
           name: scraper-results
@@ -93,4 +87,5 @@ jobs:
             *.csv
             resume_images/
             *.png
-          retention-days: 1
+            *.json
+          retention-days: 5 # เพิ่มวันเก็บไฟล์หน่อย เผื่อมาตรวจย้อนหลัง
