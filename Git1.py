@@ -1705,12 +1705,18 @@ class JobThaiRowScraper:
                             except Exception as e: progress.console.print(f"[bold red]❌ Error Link {i+1}: {e}[/]")
                             progress.advance(task_id)
                 
-                if current_keyword_batch and (is_friday or is_manual_run):
+                # จบ Loop ใหญ่ของ Keyword นี้
+                # 🟢 [แก้ไข] เพิ่มตัวแปร ENABLE_BATCH_EMAIL เข้าไปในเงื่อนไข
+                if current_keyword_batch and (is_friday or is_manual_run) and ENABLE_BATCH_EMAIL:
+                    progress.console.print(f"\n[bold green]📨 วันศุกร์/Manual (Switch ON) -> ส่งสรุป Batch ({len(current_keyword_batch)} คน)[/]")
                     self.send_batch_email(current_keyword_batch, keyword)
-                    # 🟢 [เพิ่ม] 6. บันทึกทุกคนใน Batch สุดท้ายลง Google Sheet
                     if EMAIL_USE_HISTORY:
-                         for p in current_keyword_batch: 
-                             self.update_history_sheet(p['id'], str(today))
+                        for p in current_keyword_batch: 
+                            self.update_history_sheet(p['id'], str(today))
+                
+                # (Optional) แจ้งเตือนว่าข้ามการส่ง
+                elif current_keyword_batch and (is_friday or is_manual_run) and not ENABLE_BATCH_EMAIL:
+                     progress.console.print(f"\n[dim yellow]🚫 ข้ามการส่งเมลสรุป (Switch OFF) - เก็บข้อมูลลง Sheet อย่างเดียว[/]")
 
             console.print("⏳ พัก 3 วินาที ก่อนคำต่อไป...", style="dim")
             time.sleep(3)
